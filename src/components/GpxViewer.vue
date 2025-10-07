@@ -1,0 +1,1273 @@
+<template>
+  <div class="gpx-viewer">
+    <!-- 左侧控制面板 -->
+    <div class="control-panel">
+      <div class="panel-header">
+        <h2>GPX 路径查看器</h2>
+      </div>
+      
+      <!-- 文件上传 -->
+      <div class="upload-section">
+        <input 
+          type="file" 
+          ref="fileInput"
+          @change="handleFileUpload"
+          accept=".gpx"
+          id="gpx-file"
+        />
+        <label for="gpx-file" class="upload-btn">
+          选择 GPX 文件
+        </label>
+      </div>
+
+      <!-- 数据信息 -->
+      <div v-if="gpxData" class="info-section">
+        <h3>运动数据</h3>
+        <div class="info-item">
+          <span class="label">开始时间：</span>
+          <span class="value">{{ formatDateTime(gpxData.startTime) }}</span>
+        </div>
+        <div class="info-item">
+          <span class="label">总时长：</span>
+          <span class="value">{{ formatDuration(gpxData.totalTime) }}</span>
+        </div>
+        <div class="info-item">
+          <span class="label">总距离：</span>
+          <span class="value">{{ formatDistance(gpxData.totalDistance) }}</span>
+        </div>
+        <div class="info-item">
+          <span class="label">轨迹点数：</span>
+          <span class="value">{{ gpxData.pointCount }}</span>
+        </div>
+        <div class="info-item" v-if="gpxData.activityType">
+          <span class="label">活动类型：</span>
+          <span class="value">{{ gpxData.activityType }}</span>
+        </div>
+      </div>
+
+      <!-- 地图样式切换 -->
+      <div class="map-style-section">
+        <h3>地图图层</h3>
+        <div class="layer-controls">
+          <label class="checkbox-label">
+            <input type="checkbox" v-model="showTraffic" @change="toggleTraffic">
+            <span>路况信息</span>
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" v-model="showSatellite" @change="toggleSatellite">
+            <span>卫星图层</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- 活动类型设置 -->
+      <div v-if="gpxData" class="activity-section">
+        <h3>活动类型</h3>
+        <input 
+          type="text" 
+          v-model="activityName" 
+          @input="updateActivityName"
+          placeholder="例如：户外步行、晨跑等"
+          class="activity-input"
+        />
+      </div>
+
+      <!-- 颜色设置 -->
+      <div v-if="gpxData" class="color-section">
+        <h3>路径颜色</h3>
+        <div class="color-controls">
+          <div class="color-item">
+            <label class="color-label">
+              <span>颜色</span>
+              <input 
+                type="color" 
+                v-model="routeColor" 
+                @change="updateRouteColor"
+                class="color-picker"
+              />
+            </label>
+            <button @click="resetRouteColor" class="reset-btn">重置</button>
+          </div>
+          <div class="color-presets-inline">
+            <button 
+              v-for="color in colorPresets" 
+              :key="'route-' + color.value"
+              @click="setRouteColor(color.value)"
+              class="preset-color-small"
+              :style="{ backgroundColor: color.value }"
+              :title="color.name"
+            ></button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 导出功能 -->
+      <div v-if="gpxData" class="export-section">
+        <h3>导出图片</h3>
+        <div class="export-controls">
+          <div class="export-scale">
+            <label>导出倍数：</label>
+            <select v-model="exportScale">
+              <option value="1">1x (标准)</option>
+              <option value="2">2x (推荐)</option>
+              <option value="3">3x (高清)</option>
+              <option value="4">4x (超清)</option>
+            </select>
+          </div>
+          <button @click="exportImage" class="export-btn" :disabled="exporting">
+            {{ exporting ? '导出中...' : '导出图片' }}
+          </button>
+        </div>
+      </div>
+
+      <!-- 提示信息 -->
+      <div class="tip-section">
+        <p class="tip">💡 提示：拖动地图查看详情，滚轮缩放</p>
+      </div>
+    </div>
+
+    <!-- 右侧预览区域 -->
+    <div class="preview-panel"> 
+      <div ref="previewContent" class="preview-content">
+        <!-- 地图容器（整个区域） -->
+        <div ref="mapContainer" class="preview-map">
+          <!-- 地图会在这里初始化 -->
+        </div>
+        
+        <!-- 叠加的数据信息 -->
+        <div v-if="gpxData" class="preview-overlay">
+          <!-- 顶部信息 -->
+          <div class="preview-header">
+            <div class="preview-title">{{ activityName }}</div>
+            <div class="preview-time">{{ formatDateTime(gpxData.startTime) }}</div>
+          </div>
+          
+          <!-- 底部数据 -->
+          <div class="preview-stats">
+            <div class="stat-row">
+              <div class="stat-item">
+                <div class="stat-label">运动时间</div>
+                <div class="stat-value">{{ formatDuration(gpxData.totalTime) }}</div>
+              </div>
+              <div class="stat-item">
+                <div class="stat-label">里程</div>
+                <div class="stat-value">{{ formatDistance(gpxData.totalDistance) }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 加载提示 -->
+    <div v-if="loading" class="loading-overlay">
+      <div class="loading-spinner"></div>
+      <p>{{ loadingText }}</p>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted, onUnmounted } from 'vue'
+import AMapLoader from '@amap/amap-jsapi-loader'
+import { XMLParser } from 'fast-xml-parser'
+import html2canvas from 'html2canvas'
+
+// 高德地图 Key - 使用公共测试 Key（建议替换成您自己的）
+const AMAP_KEY = '1700798238bf5ff1d138946d98d1b108'
+const AMAP_SECURITY_CODE = 'b1e3976a8c2ebf69ccf86bd5f0bd34e3'
+
+const mapContainer = ref(null)
+const fileInput = ref(null)
+const map = ref(null)
+const AMap = ref(null)
+const gpxData = ref(null)
+const loading = ref(false)
+const loadingText = ref('加载中...')
+const showTraffic = ref(false)
+const showSatellite = ref(true)  // 默认开启卫星图层
+
+// 导出相关
+const exportScale = ref(2)
+const exporting = ref(false)
+const previewContent = ref(null)
+
+// 活动类型
+const activityName = ref('开放水域游泳')
+
+// 颜色设置
+const routeColor = ref('#3887be')
+const defaultRouteColor = '#3887be'
+
+// 颜色预设
+const colorPresets = [
+  { name: '蓝色', value: '#3887be' },
+  { name: '红色', value: '#ef4444' },
+  { name: '绿色', value: '#22c55e' },
+  { name: '紫色', value: '#a855f7' },
+  { name: '橙色', value: '#f97316' },
+  { name: '粉色', value: '#ec4899' }
+]
+
+// 地图图层
+const trafficLayer = ref(null)
+const satelliteLayer = ref(null)
+
+// 路径相关对象
+let polyline = null
+let startMarker = null
+let endMarker = null
+const kmMarkers = []  // 公里标记数组
+
+// 初始化地图
+onMounted(async () => {
+  loading.value = true
+  loadingText.value = '正在加载地图...'
+  
+  try {
+    // 设置安全密钥（如果您的Key需要安全密钥，请在控制台设置后取消下面的注释）
+    // window._AMapSecurityConfig = {
+    //   securityJsCode: AMAP_SECURITY_CODE
+    // }
+    
+    // 加载高德地图
+    AMap.value = await AMapLoader.load({
+      key: AMAP_KEY,
+      version: '2.0',
+      plugins: ['AMap.Scale', 'AMap.ToolBar', 'AMap.ControlBar']
+    })
+    
+    // 创建地图实例
+    map.value = new AMap.value.Map(mapContainer.value, {
+      zoom: 13,
+      center: [119.54, 35.43],
+      viewMode: '2D',
+      pitch: 0,
+      mapStyle: 'amap://styles/normal',
+      // 隐藏所有UI控件
+      showIndoorMap: false,
+      // 不显示地图logo（但会保留版权信息）
+    })
+    
+    // 不添加任何控件，保持地图简洁
+    
+    // 初始化图层
+    trafficLayer.value = new AMap.value.TileLayer.Traffic({
+      zIndex: 10,
+      visible: false
+    })
+    map.value.add(trafficLayer.value)
+    
+    satelliteLayer.value = new AMap.value.TileLayer.Satellite({
+      visible: true  // 默认显示卫星图层
+    })
+    map.value.add(satelliteLayer.value)
+    
+    loading.value = false
+  } catch (error) {
+    console.error('地图加载失败:', error)
+    alert('地图加载失败，请刷新页面重试')
+    loading.value = false
+  }
+})
+
+// 清理
+onUnmounted(() => {
+  if (map.value) {
+    map.value.destroy()
+  }
+})
+
+// 处理文件上传
+const handleFileUpload = async (event) => {
+  const file = event.target.files[0]
+  if (!file) return
+
+  loading.value = true
+  loadingText.value = '正在解析 GPX 文件...'
+  
+  try {
+    const text = await file.text()
+    parseGPX(text)
+  } catch (error) {
+    console.error('文件读取失败:', error)
+    alert('文件读取失败，请重试')
+  } finally {
+    loading.value = false
+  }
+}
+
+// 解析 GPX 文件
+const parseGPX = (gpxText) => {
+  const parser = new XMLParser({
+    ignoreAttributes: false,
+    attributeNamePrefix: '@_'
+  })
+  
+  const result = parser.parse(gpxText)
+  const gpx = result.gpx
+  
+  // 提取元数据
+  const metadata = gpx.metadata || {}
+  const trk = gpx.trk
+  const extensions = trk.extensions || {}
+  
+  // 提取轨迹点
+  const trackSegments = Array.isArray(trk.trkseg) ? trk.trkseg : [trk.trkseg]
+  const allPoints = []
+  
+  trackSegments.forEach(segment => {
+    const points = Array.isArray(segment.trkpt) ? segment.trkpt : [segment.trkpt]
+    points.forEach(point => {
+      allPoints.push({
+        lng: parseFloat(point['@_lon']),
+        lat: parseFloat(point['@_lat']),
+        time: point.time
+      })
+    })
+  })
+  
+  // 构建数据对象
+  gpxData.value = {
+    startTime: metadata.time || allPoints[0]?.time,
+    totalTime: parseFloat(extensions.totalTime) || 0,
+    totalDistance: parseFloat(extensions.totalDistance) || 0,
+    pointCount: allPoints.length,
+    activityType: trk.type || '',
+    points: allPoints
+  }
+  
+  // 设置活动类型
+  // activityName.value = gpxData.value.activityType || '户外运动'
+  
+  // 在地图上显示
+  displayRouteOnMap(allPoints)
+}
+
+// 在地图上显示路径
+const displayRouteOnMap = (points) => {
+  if (!map.value || !AMap.value || points.length === 0) return
+  
+  // 清除旧的覆盖物
+  clearMapOverlays()
+  
+  // 构建路径坐标数组
+  const path = points.map(p => [p.lng, p.lat])
+  
+  // 创建折线
+  polyline = new AMap.value.Polyline({
+    path: path,
+    strokeColor: routeColor.value,
+    strokeWeight: 5,
+    strokeOpacity: 0.8,
+    lineJoin: 'round',
+    lineCap: 'round'
+  })
+  map.value.add(polyline)
+  
+  // 添加公里标记（每1km一个）
+  addKilometerMarkers(points)
+  
+  // 添加起点标记
+  const startPoint = points[0]
+  startMarker = new AMap.value.Marker({
+    position: [startPoint.lng, startPoint.lat],
+    icon: createStartIcon(),
+    offset: new AMap.value.Pixel(-12, -12),
+    zIndex: 200
+  })
+  map.value.add(startMarker)
+  
+  // 添加起点信息窗体
+  const startInfo = new AMap.value.InfoWindow({
+    content: `<div style="padding: 10px;"><strong>起点</strong><br/>${formatDateTime(startPoint.time)}</div>`,
+    offset: new AMap.value.Pixel(0, -30)
+  })
+  startMarker.on('click', () => {
+    startInfo.open(map.value, [startPoint.lng, startPoint.lat])
+  })
+  
+  // 添加终点标记
+  const endPoint = points[points.length - 1]
+  endMarker = new AMap.value.Marker({
+    position: [endPoint.lng, endPoint.lat],
+    icon: createEndIcon(),
+    offset: new AMap.value.Pixel(-12, -12),
+    zIndex: 200
+  })
+  map.value.add(endMarker)
+  
+  // 添加终点信息窗体
+  const endInfo = new AMap.value.InfoWindow({
+    content: `<div style="padding: 10px;"><strong>终点</strong><br/>${formatDateTime(endPoint.time)}</div>`,
+    offset: new AMap.value.Pixel(0, -30)
+  })
+  endMarker.on('click', () => {
+    endInfo.open(map.value, [endPoint.lng, endPoint.lat])
+  })
+  
+  // 自动调整视野以显示完整路径
+  map.value.setFitView()
+}
+
+// 清除地图覆盖物
+const clearMapOverlays = () => {
+  if (polyline) {
+    map.value.remove(polyline)
+    polyline = null
+  }
+  if (startMarker) {
+    map.value.remove(startMarker)
+    startMarker = null
+  }
+  if (endMarker) {
+    map.value.remove(endMarker)
+    endMarker = null
+  }
+  kmMarkers.forEach(marker => map.value.remove(marker))
+  kmMarkers.length = 0
+}
+
+// 计算两个经纬度点之间的距离（米）
+const calculateDistance = (lat1, lng1, lat2, lng2) => {
+  const R = 6371000 // 地球半径（米）
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLng = (lng2 - lng1) * Math.PI / 180
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng / 2) * Math.sin(dLng / 2)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  return R * c
+}
+
+// 添加公里标记
+const addKilometerMarkers = (points) => {
+  if (points.length < 2) return
+  
+  let cumulativeDistance = 0  // 累计距离（米）
+  let nextKmMark = 1000  // 下一个公里标记位置（米）
+  let kmCount = 1  // 公里计数
+  
+  for (let i = 1; i < points.length; i++) {
+    const p1 = points[i - 1]
+    const p2 = points[i]
+    
+    // 计算这两点之间的距离
+    const segmentDistance = calculateDistance(p1.lat, p1.lng, p2.lat, p2.lng)
+    const prevDistance = cumulativeDistance
+    cumulativeDistance += segmentDistance
+    
+    // 检查是否跨越了公里标记点
+    while (nextKmMark <= cumulativeDistance && nextKmMark <= prevDistance + segmentDistance) {
+      // 计算标记点在当前线段上的位置（比例）
+      const ratio = (nextKmMark - prevDistance) / segmentDistance
+      const markerLng = p1.lng + (p2.lng - p1.lng) * ratio
+      const markerLat = p1.lat + (p2.lat - p1.lat) * ratio
+      
+      // 创建公里标记
+      const kmMarker = new AMap.value.Marker({
+        position: [markerLng, markerLat],
+        icon: createKmIcon(kmCount),
+        offset: new AMap.value.Pixel(-12, -12),
+        zIndex: 150
+      })
+      
+      // 添加信息窗体
+      const infoWindow = new AMap.value.InfoWindow({
+        content: `<div style="padding: 8px; font-size: 14px;"><strong>${kmCount} 公里</strong></div>`,
+        offset: new AMap.value.Pixel(0, -30)
+      })
+      
+      kmMarker.on('click', () => {
+        infoWindow.open(map.value, [markerLng, markerLat])
+      })
+      
+      map.value.add(kmMarker)
+      kmMarkers.push(kmMarker)
+      
+      // 准备下一个公里标记
+      nextKmMark += 1000
+      kmCount++
+    }
+  }
+}
+
+// 创建起点图标
+const createStartIcon = () => {
+  return new AMap.value.Icon({
+    size: new AMap.value.Size(24, 24),
+    image: 'data:image/svg+xml;base64,' + btoa(`
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="12" cy="12" r="10" fill="#22c55e" stroke="white" stroke-width="2"/>
+        <circle cx="12" cy="12" r="4" fill="white"/>
+      </svg>
+    `),
+    imageSize: new AMap.value.Size(24, 24)
+  })
+}
+
+// 创建终点图标
+const createEndIcon = () => {
+  return new AMap.value.Icon({
+    size: new AMap.value.Size(24, 24),
+    image: 'data:image/svg+xml;base64,' + btoa(`
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="12" cy="12" r="10" fill="#ef4444" stroke="white" stroke-width="2"/>
+        <circle cx="12" cy="12" r="4" fill="white"/>
+      </svg>
+    `),
+    imageSize: new AMap.value.Size(24, 24)
+  })
+}
+
+// 创建公里标记图标
+const createKmIcon = (kmNumber) => {
+  return new AMap.value.Icon({
+    size: new AMap.value.Size(24, 24),
+    image: 'data:image/svg+xml;base64,' + btoa(`
+      <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="12" cy="12" r="10" fill="white" stroke="${routeColor.value}" stroke-width="2"/>
+        <text x="12" y="12" text-anchor="middle" dominant-baseline="central" 
+              font-size="10" font-weight="bold" fill="${routeColor.value}">${kmNumber}</text>
+      </svg>
+    `),
+    imageSize: new AMap.value.Size(24, 24)
+  })
+}
+
+// 切换路况图层
+const toggleTraffic = () => {
+  if (trafficLayer.value) {
+    if (showTraffic.value) {
+      trafficLayer.value.show()
+    } else {
+      trafficLayer.value.hide()
+    }
+  }
+}
+
+// 切换卫星图层
+const toggleSatellite = () => {
+  if (satelliteLayer.value) {
+    if (showSatellite.value) {
+      satelliteLayer.value.show()
+    } else {
+      satelliteLayer.value.hide()
+    }
+  }
+}
+
+// 格式化日期时间
+const formatDateTime = (dateString) => {
+  if (!dateString) return '-'
+  const date = new Date(dateString)
+  return date.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  })
+}
+
+// 格式化时长
+const formatDuration = (seconds) => {
+  if (!seconds) return '-'
+  const hours = Math.floor(seconds / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+  const secs = Math.floor(seconds % 60)
+  
+  if (hours > 0) {
+    return `${hours} 小时 ${minutes} 分钟 ${secs} 秒`
+  } else if (minutes > 0) {
+    return `${minutes} 分钟 ${secs} 秒`
+  } else {
+    return `${secs} 秒`
+  }
+}
+
+// 格式化距离
+const formatDistance = (meters) => {
+  if (!meters) return '-'
+  if (meters >= 1000) {
+    return `${(meters / 1000).toFixed(2)} 公里`
+  } else {
+    return `${meters.toFixed(0)} 米`
+  }
+}
+
+// 更新路径颜色
+const updateRouteColor = () => {
+  if (gpxData.value && gpxData.value.points) {
+    displayRouteOnMap(gpxData.value.points)
+  }
+}
+
+// 设置路径颜色
+const setRouteColor = (color) => {
+  routeColor.value = color
+  updateRouteColor()
+}
+
+// 重置路径颜色
+const resetRouteColor = () => {
+  routeColor.value = defaultRouteColor
+  updateRouteColor()
+}
+
+// 更新活动类型
+const updateActivityName = () => {
+  // 活动类型会自动通过v-model更新，无需额外操作
+}
+
+// 导出图片
+const exportImage = async () => {
+  if (!previewContent.value || !gpxData.value || exporting.value) {
+    console.log('导出条件不满足:', { 
+      hasPreview: !!previewContent.value, 
+      hasData: !!gpxData.value,
+      isExporting: exporting.value 
+    })
+    alert('请先上传 GPX 文件')
+    return
+  }
+  
+  if (!map.value) {
+    alert('地图还未加载完成，请稍后再试')
+    return
+  }
+  
+  exporting.value = true
+  loadingText.value = '正在生成图片...'
+  loading.value = true
+  
+  try {
+    console.log('开始导出图片...')
+    console.log('预览区域:', previewContent.value)
+    console.log('地图实例:', map.value)
+    
+    // 等待地图完全渲染
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    
+    // 强制重绘地图
+    if (map.value) {
+      map.value.render()
+    }
+    
+    // 再等待一帧
+    await new Promise(resolve => requestAnimationFrame(resolve))
+    
+    console.log('开始截图...')
+    
+    // 获取实际的预览区域尺寸
+    const rect = previewContent.value.getBoundingClientRect()
+    console.log('预览区域实际尺寸:', rect.width, 'x', rect.height)
+    
+    // 截取整个预览区域（包括地图和叠加层）
+    const canvas = await html2canvas(previewContent.value, {
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: null,  // 透明背景
+      scale: parseFloat(exportScale.value),
+      width: rect.width,
+      height: rect.height,
+      logging: false,
+      foreignObjectRendering: false,
+      imageTimeout: 15000,
+      onclone: (clonedDoc) => {
+        console.log('DOM克隆完成，尝试清理地图控件...')
+        // 在克隆的文档中也隐藏控件
+        const clonedMap = clonedDoc.querySelector('.preview-map')
+        if (clonedMap) {
+          const controls = clonedMap.querySelectorAll('.amap-logo, .amap-copyright, .amap-toolbar, .amap-controlbar, .amap-controls, .amap-scalecontrol')
+          controls.forEach(el => {
+            el.style.display = 'none'
+            el.style.visibility = 'hidden'
+            el.style.opacity = '0'
+          })
+        }
+      }
+    })
+    
+    console.log('截图完成，尺寸:', canvas.width, 'x', canvas.height)
+    
+    // 下载图片
+    const link = document.createElement('a')
+    const timestamp = new Date(gpxData.value.startTime).toISOString().replace(/[:.]/g, '-').split('T')[0]
+    const fileName = `GPX-${timestamp}-${exportScale.value}x.png`
+    link.download = fileName
+    link.href = canvas.toDataURL('image/png', 0.95)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    
+    console.log('图片已下载:', fileName)
+    alert('图片导出成功！文件名：' + fileName)
+    
+  } catch (error) {
+    console.error('导出失败:', error)
+    alert('导出失败: ' + error.message + '\n请查看控制台了解详情')
+  } finally {
+    exporting.value = false
+    loading.value = false
+  }
+}
+</script>
+
+<style scoped>
+.gpx-viewer {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  gap: 20px;
+  padding: 20px;
+  background: #f5f7fa;
+}
+
+.control-panel {
+  width: 350px;
+  height: calc(100vh - 40px);
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  padding: 20px;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.panel-header h2 {
+  font-size: 20px;
+  margin-bottom: 20px;
+  color: #1f2937;
+}
+
+.upload-section {
+  margin-bottom: 20px;
+}
+
+input[type="file"] {
+  display: none;
+}
+
+.upload-btn {
+  display: block;
+  width: 100%;
+  padding: 12px 20px;
+  background: #3887be;
+  color: white;
+  border-radius: 8px;
+  text-align: center;
+  cursor: pointer;
+  transition: background 0.3s;
+  font-weight: 500;
+}
+
+.upload-btn:hover {
+  background: #2c6a99;
+}
+
+.info-section {
+  margin-bottom: 20px;
+  padding: 15px;
+  background: #f9fafb;
+  border-radius: 8px;
+}
+
+.info-section h3 {
+  font-size: 16px;
+  margin-bottom: 12px;
+  color: #374151;
+}
+
+.info-item {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.info-item .label {
+  color: #6b7280;
+}
+
+.info-item .value {
+  color: #1f2937;
+  font-weight: 500;
+}
+
+.map-style-section {
+  margin-bottom: 20px;
+}
+
+.map-style-section h3 {
+  font-size: 16px;
+  margin-bottom: 12px;
+  color: #374151;
+}
+
+.layer-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #374151;
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.color-section {
+  margin-bottom: 20px;
+}
+
+.color-section h3 {
+  font-size: 16px;
+  margin-bottom: 12px;
+  color: #374151;
+}
+
+.color-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.color-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.color-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: #374151;
+  cursor: pointer;
+}
+
+.color-picker {
+  width: 50px;
+  height: 35px;
+  border: 2px solid #e5e7eb;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: border-color 0.3s;
+}
+
+.color-picker:hover {
+  border-color: #3887be;
+}
+
+.reset-btn {
+  padding: 6px 12px;
+  background: #f3f4f6;
+  color: #374151;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.reset-btn:hover {
+  background: #e5e7eb;
+  border-color: #9ca3af;
+}
+
+.color-presets {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.color-presets-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding-left: 8px;
+}
+
+.preset-label {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.preset-color {
+  width: 32px;
+  height: 32px;
+  border: 2px solid #e5e7eb;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.preset-color:hover {
+  transform: scale(1.1);
+  border-color: #3887be;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.preset-color-small {
+  width: 24px;
+  height: 24px;
+  border: 2px solid #e5e7eb;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.preset-color-small:hover {
+  transform: scale(1.15);
+  border-color: #3887be;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.activity-section {
+  margin-bottom: 20px;
+}
+
+.activity-section h3 {
+  font-size: 16px;
+  margin-bottom: 12px;
+  color: #374151;
+}
+
+.activity-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  transition: all 0.3s;
+  box-sizing: border-box;
+}
+
+.activity-input:focus {
+  outline: none;
+  border-color: #3887be;
+  box-shadow: 0 0 0 3px rgba(56, 135, 190, 0.1);
+}
+
+.activity-input::placeholder {
+  color: #9ca3af;
+}
+
+.export-section {
+  margin-bottom: 20px;
+}
+
+.export-section h3 {
+  font-size: 16px;
+  margin-bottom: 12px;
+  color: #374151;
+}
+
+.export-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.preview-btn,
+.export-btn {
+  width: 100%;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.preview-btn {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.preview-btn:hover {
+  background: #e5e7eb;
+}
+
+.export-btn {
+  background: #3887be;
+  color: white;
+}
+
+.export-btn:hover:not(:disabled) {
+  background: #2c6a99;
+}
+
+.export-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.export-scale {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #374151;
+}
+
+.export-scale select {
+  flex: 1;
+  padding: 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.tip-section {
+  padding: 12px;
+  background: #fef3c7;
+  border-radius: 8px;
+  border-left: 4px solid #f59e0b;
+}
+
+.tip {
+  margin: 0;
+  font-size: 13px;
+  color: #92400e;
+  line-height: 1.5;
+}
+
+/* 右侧预览面板 */
+.preview-panel {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.preview-label {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: rgba(255, 255, 255, 0.95);
+  color: #ef4444;
+  font-size: 24px;
+  font-weight: 700;
+  padding: 8px 16px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  z-index: 1001;
+  letter-spacing: 2px;
+  border: 2px solid #ef4444;
+}
+
+.preview-content {
+  background: white;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  position: relative;
+  /* 使用容器查询方式保持3:4比例 */
+}
+
+/* 左右结构：始终保持3:4比例 */
+@media (min-width: 901px) {
+  .preview-content {
+    /* 先尝试按高度计算宽度 */
+    width: calc((100vh - 40px) * 3 / 4);
+    height: calc(100vh - 40px);
+  }
+  
+  /* 如果宽度超出可用空间，则按宽度计算高度 */
+  @supports (width: min(1px, 1px)) {
+    .preview-content {
+      width: min(calc((100vh - 40px) * 3 / 4), calc(100vw - 350px - 60px));
+      height: min(calc(100vh - 40px), calc((100vw - 350px - 60px) * 4 / 3));
+    }
+  }
+}
+
+/* 小屏幕：上下结构 */
+@media (max-width: 900px) {
+  .gpx-viewer {
+    flex-direction: column;
+    padding: 10px;
+    gap: 10px;
+    overflow-y: auto;
+  }
+  
+  .control-panel {
+    width: 100%;
+    height: auto;
+    max-height: none;
+  }
+  
+  .preview-panel {
+    width: 100%;
+  }
+  
+  .preview-content {
+    /* 上下结构：宽度100%，高度按3:4比例 */
+    width: calc(100vw - 20px);
+    height: calc((100vw - 20px) * 4 / 3);
+  }
+  
+  .preview-label {
+    top: 10px;
+    right: 10px;
+    font-size: 18px;
+    padding: 6px 12px;
+  }
+}
+
+.preview-map {
+  width: 100%;
+  height: 100%;
+  background: #e5e7eb;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+/* 隐藏高德地图的控件和版权信息 */
+.preview-map :deep(.amap-logo),
+.preview-map :deep(.amap-copyright),
+.preview-map :deep(.amap-scalecontrol),
+.preview-map :deep(.amap-toolbar),
+.preview-map :deep(.amap-controlbar),
+.preview-map :deep(.amap-controls) {
+  display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+}
+
+/* 叠加层 */
+.preview-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.preview-header {
+  background: linear-gradient(180deg, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0) 100%);
+  padding: 16px;
+  color: white;
+}
+
+.preview-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: white;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+  margin-bottom: 8px;
+}
+
+.preview-time {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.95);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+.preview-stats {
+  background: linear-gradient(0deg, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.85) 100%);
+  /* backdrop-filter: blur(10px); */
+  padding: 16px 20px;
+  border-radius: 20px 20px 0 0;
+}
+
+.stat-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.stat-item {
+  text-align: center;
+  padding: 10px 0; 
+  border-radius: 8px; 
+}
+
+.stat-label {
+  font-size: 13px;
+  color: #6b7280;
+  margin-bottom: 6px;
+}
+
+.stat-value {
+  font-size: 20px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.95);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.loading-spinner {
+  width: 50px;
+  height: 50px;
+  border: 4px solid #e5e7eb;
+  border-top-color: #3887be;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-overlay p {
+  margin-top: 16px;
+  color: #6b7280;
+  font-size: 16px;
+}
+
+/* 滚动条样式 */
+.control-panel::-webkit-scrollbar {
+  width: 6px;
+}
+
+.control-panel::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 10px;
+}
+
+.control-panel::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 10px;
+}
+
+.control-panel::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+</style>
