@@ -99,3 +99,6 @@
 - 底部磨砂效果
 - iOS 风格设计
 - 数据清晰可读
+
+<img width="890" height="811" alt="image" src="https://github.com/user-attachments/assets/d53ebfeb-396b-4a74-80d0-c6a79c3b7365" />
+
