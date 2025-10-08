@@ -99,3 +99,6 @@ Convert your sports tracks (running, cycling, swimming, etc.) into beautiful 3:4
 - Bottom frosted effect
 - iOS-style design
 - Clear readable data
+
+<img width="890" height="811" alt="image" src="https://github.com/user-attachments/assets/d53ebfeb-396b-4a74-80d0-c6a79c3b7365" />
+
