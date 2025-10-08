@@ -1,103 +1,101 @@
-# 🏃 GPX 路径可视化工具
+# English README
 
- 
-将您的运动轨迹（跑步、骑行、游泳等）转换为精美的 3:4 比例分享卡片，轻松导出高清透明 PNG 图片。
+# 🏃 GPX Track Visualization Tool
 
-## ✨ 核心功能
+Convert your sports tracks (running, cycling, swimming, etc.) into beautiful 3:4 ratio sharing cards, easily export high-resolution transparent PNG images.
 
-### 📁 GPX 文件解析
-- 一键上传 GPX 文件
-- 自动解析轨迹点、时间、距离等数据
-- 支持各类运动 APP 导出的标准 GPX 格式
+## ✨ Core Features
 
-### 🗺️ 地图可视化
-- **高德地图渲染** - 国内访问速度快，地图清晰
-- **卫星影像** - 默认开启，展示真实地形
-- **路径绘制** - 自定义颜色（6种预设 + 自由选择）
-- **智能标记** 
-  - 起点（绿色圆点）
-  - 终点（红色圆点）
-  - 每1公里标记（带数字圆圈）
+### 📁 GPX File Parsing
+- One-click GPX file upload
+- Auto-parse track points, time, distance and other data
+- Support standard GPX format exported from various sports apps
 
-### 🎨 可视化定制
-- **活动类型** - 自定义输入（开放水域游泳、晨跑、骑行等）
-- **路径颜色** - 色轮选择器 + 6种快速预设
-- **图层切换** - 标准地图 / 卫星影像 / 路况信息
+### 🗺️ Map Visualization
+- **Amap Rendering** - Fast access speed in China, clear maps
+- **Satellite Imagery** - Enabled by default, shows real terrain
+- **Path Drawing** - Custom colors (6 presets + free selection)
+- **Smart Markers** 
+  - Start point (green dot)
+  - End point (red dot)
+  - Every 1km marker (numbered circles)
 
-### 📸 高清图片导出
-- **3:4 黄金比例** - 适合社交媒体分享
-- **透明背景** - PNG格式，圆角外侧透明
-- **多分辨率** - 1x / 2x / 3x / 4x（最高3000×4000px）
-- **数据叠加** - 顶部活动信息 + 底部运动数据
-- **精美布局** - 渐变遮罩 + 毛玻璃效果
+### 🎨 Visualization Customization
+- **Activity Type** - Custom input (open water swimming, morning run, cycling, etc.)
+- **Path Color** - Color wheel selector + 6 quick presets
+- **Layer Toggle** - Standard map / Satellite imagery / Traffic info
 
-### 📱 响应式设计
-- **大屏（>900px）** - 左右分栏，控制面板 + 预览区
-- **小屏（≤900px）** - 上下布局，完美适配手机
-- **严格3:4比例** - 自动计算，保持完美比例
+### 📸 High-Resolution Image Export
+- **3:4 Golden Ratio** - Perfect for social media sharing
+- **Transparent Background** - PNG format, transparent outside rounded corners
+- **Multi-Resolution** - 1x / 2x / 3x / 4x (up to 3000×4000px)
+- **Data Overlay** - Top activity info + Bottom sports data
+- **Beautiful Layout** - Gradient mask + Frosted glass effect
 
-## 使用工具
+### 📱 Responsive Design
+- **Large Screen (>900px)** - Left-right layout, control panel + preview area
+- **Small Screen (≤900px)** - Top-bottom layout, perfect for mobile
+- **Strict 3:4 Ratio** - Auto-calculated, maintains perfect proportion
 
-#### 📤 上传 GPX
-1. 点击"**选择 GPX 文件**"按钮
-2. 选择您的 GPX 文件（支持 Keep、咕咚、Strava 等导出的 GPX）
-3. 地图自动渲染路径
+## How to Use
 
-#### 🎨 自定义样式
-1. 修改"**活动类型**"（如：开放水域游泳）
-2. 选择"**路径颜色**"（点击预设或使用色轮）
-3. 切换"**卫星图层**"查看地形
+#### 📤 Upload GPX
+1. Click "**Select GPX File**" button
+2. Choose your GPX file (supports exports from Keep, Codoon, Strava, etc.)
+3. Map automatically renders the path
 
-#### 📸 导出图片
-1. 调整地图视角到理想位置
-2. 选择导出倍数（**推荐 2x**）
-3. 点击"**导出图片**"
-4. 等待 1-2 秒，自动下载 PNG 文件
+#### 🎨 Customize Style
+1. Modify "**Activity Type**" (e.g., Open Water Swimming)
+2. Select "**Path Color**" (click presets or use color wheel)
+3. Toggle "**Satellite Layer**" to view terrain
 
-**导出文件示例：** `GPX-2025-10-07-2x.png`
+#### 📸 Export Image
+1. Adjust map view to ideal position
+2. Select export scale (**Recommended 2x**)
+3. Click "**Export Image**"
+4. Wait 1-2 seconds, PNG file downloads automatically
 
-## 📦 技术栈
+**Export File Example:** `GPX-2025-10-07-2x.png`
 
-| 技术 | 版本 | 说明 |
-|------|------|------|
-| **Vue 3** | ^3.4.0 | 组合式 API + 响应式系统 |
-| **高德地图 JS API** | 2.0 | 地图渲染与交互 |
-| **html2canvas** | ^1.4.1 | DOM转图片导出 |
-| **fast-xml-parser** | ^4.3.0 | GPX文件解析 |
-| **Vite** | ^5.0.0 | 极速构建工具 |
-| **pnpm** | - | 高效包管理 |
+## 📦 Tech Stack
 
-## 🎯 项目特色
+| Technology | Version | Description |
+|------------|---------|-------------|
+| **Vue 3** | ^3.4.0 | Composition API + Reactive System |
+| **Amap JS API** | 2.0 | Map rendering and interaction |
+| **html2canvas** | ^1.4.1 | DOM to image export |
+| **fast-xml-parser** | ^4.3.0 | GPX file parsing |
+| **Vite** | ^5.0.0 | Lightning fast build tool |
+| **pnpm** | - | Efficient package manager |
 
-### 1️⃣ 智能公里标记
-- 自动计算轨迹累计距离
-- 每隔 1 公里精确标记
-- 圆圈数字，清晰易读
-- 点击标记显示详情
+## 🎯 Project Highlights
 
-### 2️⃣ 3:4 黄金比例
-- 适配主流社交平台
-- 自动计算最佳尺寸
-- 响应式自适应
-- 始终保持完美比例
+### 1️⃣ Smart Kilometer Markers
+- Auto-calculate cumulative track distance
+- Precise markers every 1 kilometer
+- Numbered circles, clear and readable
+- Click markers to show details
 
-### 3️⃣ 透明PNG导出
-- 圆角外侧透明
-- Alpha 通道完整
-- 可叠加任意背景
-- 适合二次设计
+### 2️⃣ 3:4 Golden Ratio
+- Fits mainstream social platforms
+- Auto-calculate optimal dimensions
+- Responsive adaptive
+- Always maintains perfect proportion
 
-### 4️⃣ 卫星地图优先
-- 默认开启卫星影像
-- 展示真实地形
-- 海洋、山川清晰可见
-- 适合户外运动轨迹
+### 3️⃣ Transparent PNG Export
+- Transparent outside rounded corners
+- Complete Alpha channel
+- Can overlay any background
+- Suitable for secondary design
 
-### 5️⃣ 毛玻璃美学
-- 顶部渐变遮罩
-- 底部磨砂效果
-- iOS 风格设计
-- 数据清晰可读
+### 4️⃣ Satellite Map Priority
+- Satellite imagery enabled by default
+- Shows real terrain
+- Clear oceans and mountains
+- Perfect for outdoor sports tracks
 
-<img width="890" height="811" alt="image" src="https://github.com/user-attachments/assets/d53ebfeb-396b-4a74-80d0-c6a79c3b7365" />
-
+### 5️⃣ Frosted Glass Aesthetics
+- Top gradient mask
+- Bottom frosted effect
+- iOS-style design
+- Clear readable data
