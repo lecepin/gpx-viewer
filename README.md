@@ -1,4 +1,3 @@
-# English README
 
 # 🏃 GPX Track Visualization Tool
 
