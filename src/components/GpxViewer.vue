@@ -47,15 +47,28 @@
 
       <!-- 地图样式切换 -->
       <div class="map-style-section">
-        <h3>地图图层</h3>
-        <div class="layer-controls">
-          <label class="checkbox-label">
-            <input type="checkbox" v-model="showTraffic" @change="toggleTraffic">
-            <span>路况信息</span>
+        <h3>地图模式</h3>
+        <div class="map-mode-controls">
+          <label class="radio-label" :class="{ active: mapMode === 'satellite' }">
+            <input type="radio" value="satellite" v-model="mapMode" @change="changeMapMode">
+            <span class="radio-content">
+              <span class="radio-icon">🛰️</span>
+              <span class="radio-text">卫星影像</span>
+            </span>
           </label>
-          <label class="checkbox-label">
-            <input type="checkbox" v-model="showSatellite" @change="toggleSatellite">
-            <span>卫星图层</span>
+          <label class="radio-label" :class="{ active: mapMode === 'satellite-road' }">
+            <input type="radio" value="satellite-road" v-model="mapMode" @change="changeMapMode">
+            <span class="radio-content">
+              <span class="radio-icon">🗺️</span>
+              <span class="radio-text">带文字的卫星</span>
+            </span>
+          </label>
+          <label class="radio-label" :class="{ active: mapMode === 'normal' }">
+            <input type="radio" value="normal" v-model="mapMode" @change="changeMapMode">
+            <span class="radio-content">
+              <span class="radio-icon">🗾</span>
+              <span class="radio-text">2D 地图</span>
+            </span>
           </label>
         </div>
       </div>
@@ -123,6 +136,11 @@
       <!-- 提示信息 -->
       <div class="tip-section">
         <p class="tip">💡 提示：拖动地图查看详情，滚轮缩放</p>
+        <p class="tip" style="margin-top: 8px;">🗺️ 坐标已自动从 WGS84 转换为 GCJ-02</p>
+        <p class="tip" style="margin-top: 8px;">📍 地图模式说明：</p>
+        <p class="tip-small" style="margin-top: 4px;">• 卫星影像：纯净卫星图，无任何文字</p>
+        <p class="tip-small" style="margin-top: 2px;">• 带文字的卫星：卫星图+地名文字标注</p>
+        <p class="tip-small" style="margin-top: 2px;">• 2D地图：传统矢量地图样式</p>
       </div>
     </div>
 
@@ -184,8 +202,8 @@ const AMap = ref(null)
 const gpxData = ref(null)
 const loading = ref(false)
 const loadingText = ref('加载中...')
-const showTraffic = ref(false)
-const showSatellite = ref(true)  // 默认开启卫星图层
+// 地图模式: 'satellite' - 纯卫星, 'satellite-road' - 卫星+路网, 'normal' - 2D地图
+const mapMode = ref('satellite')  // 默认纯卫星模式
 
 // 导出相关
 const exportScale = ref(2)
@@ -210,8 +228,8 @@ const colorPresets = [
 ]
 
 // 地图图层
-const trafficLayer = ref(null)
 const satelliteLayer = ref(null)
+const roadNetLayer = ref(null)
 
 // 路径相关对象
 let polyline = null
@@ -240,28 +258,36 @@ onMounted(async () => {
     // 创建地图实例
     map.value = new AMap.value.Map(mapContainer.value, {
       zoom: 13,
-      center: [119.54, 35.43],
+      // center: [119.54, 35.43],
       viewMode: '2D',
       pitch: 0,
       mapStyle: 'amap://styles/normal',
       // 隐藏所有UI控件
       showIndoorMap: false,
+      features: ['bg', 'road', 'building', 'point'],  // 默认显示所有要素
       // 不显示地图logo（但会保留版权信息）
     })
     
     // 不添加任何控件，保持地图简洁
     
     // 初始化图层
-    trafficLayer.value = new AMap.value.TileLayer.Traffic({
-      zIndex: 10,
-      visible: false
-    })
-    map.value.add(trafficLayer.value)
     
+    // 1. 卫星影像图层
     satelliteLayer.value = new AMap.value.TileLayer.Satellite({
-      visible: true  // 默认显示卫星图层
+      visible: true,  // 默认显示卫星图层
+      zIndex: 1
     })
     map.value.add(satelliteLayer.value)
+    
+    // 2. 路网图层（在卫星图上显示道路名称）
+    roadNetLayer.value = new AMap.value.TileLayer.RoadNet({
+      visible: false,
+      zIndex: 2
+    })
+    map.value.add(roadNetLayer.value)
+    
+    // 应用默认的地图模式（纯卫星，无文字）
+    changeMapMode()
     
     loading.value = false
   } catch (error) {
@@ -319,9 +345,16 @@ const parseGPX = (gpxText) => {
   trackSegments.forEach(segment => {
     const points = Array.isArray(segment.trkpt) ? segment.trkpt : [segment.trkpt]
     points.forEach(point => {
+      // 原始 WGS84 坐标
+      const wgsLng = parseFloat(point['@_lon'])
+      const wgsLat = parseFloat(point['@_lat'])
+      
+      // 转换为 GCJ-02 坐标（高德地图坐标系）
+      const gcj02 = transformWGS84ToGCJ02(wgsLng, wgsLat)
+      
       allPoints.push({
-        lng: parseFloat(point['@_lon']),
-        lat: parseFloat(point['@_lat']),
+        lng: gcj02.lng,
+        lat: gcj02.lat,
         time: point.time
       })
     })
@@ -426,6 +459,56 @@ const clearMapOverlays = () => {
   }
   kmMarkers.forEach(marker => map.value.remove(marker))
   kmMarkers.length = 0
+}
+
+// WGS84 坐标转 GCJ-02 坐标（GPS 坐标转火星坐标）
+const transformWGS84ToGCJ02 = (wgsLng, wgsLat) => {
+  const PI = Math.PI
+  const a = 6378245.0  // 长半轴
+  const ee = 0.00669342162296594323  // 偏心率平方
+  
+  // 判断是否在国内，不在国内则不做偏移
+  if (isOutOfChina(wgsLng, wgsLat)) {
+    return { lng: wgsLng, lat: wgsLat }
+  }
+  
+  let dLat = transformLat(wgsLng - 105.0, wgsLat - 35.0)
+  let dLng = transformLng(wgsLng - 105.0, wgsLat - 35.0)
+  const radLat = wgsLat / 180.0 * PI
+  let magic = Math.sin(radLat)
+  magic = 1 - ee * magic * magic
+  const sqrtMagic = Math.sqrt(magic)
+  dLat = (dLat * 180.0) / ((a * (1 - ee)) / (magic * sqrtMagic) * PI)
+  dLng = (dLng * 180.0) / (a / sqrtMagic * Math.cos(radLat) * PI)
+  const mgLat = wgsLat + dLat
+  const mgLng = wgsLng + dLng
+  
+  return { lng: mgLng, lat: mgLat }
+}
+
+// 判断是否在中国境外
+const isOutOfChina = (lng, lat) => {
+  return lng < 72.004 || lng > 137.8347 || lat < 0.8293 || lat > 55.8271
+}
+
+// 纬度转换
+const transformLat = (lng, lat) => {
+  const PI = Math.PI
+  let ret = -100.0 + 2.0 * lng + 3.0 * lat + 0.2 * lat * lat + 0.1 * lng * lat + 0.2 * Math.sqrt(Math.abs(lng))
+  ret += (20.0 * Math.sin(6.0 * lng * PI) + 20.0 * Math.sin(2.0 * lng * PI)) * 2.0 / 3.0
+  ret += (20.0 * Math.sin(lat * PI) + 40.0 * Math.sin(lat / 3.0 * PI)) * 2.0 / 3.0
+  ret += (160.0 * Math.sin(lat / 12.0 * PI) + 320 * Math.sin(lat * PI / 30.0)) * 2.0 / 3.0
+  return ret
+}
+
+// 经度转换
+const transformLng = (lng, lat) => {
+  const PI = Math.PI
+  let ret = 300.0 + lng + 2.0 * lat + 0.1 * lng * lng + 0.1 * lng * lat + 0.1 * Math.sqrt(Math.abs(lng))
+  ret += (20.0 * Math.sin(6.0 * lng * PI) + 20.0 * Math.sin(2.0 * lng * PI)) * 2.0 / 3.0
+  ret += (20.0 * Math.sin(lng * PI) + 40.0 * Math.sin(lng / 3.0 * PI)) * 2.0 / 3.0
+  ret += (150.0 * Math.sin(lng / 12.0 * PI) + 300.0 * Math.sin(lng / 30.0 * PI)) * 2.0 / 3.0
+  return ret
 }
 
 // 计算两个经纬度点之间的距离（米）
@@ -535,25 +618,32 @@ const createKmIcon = (kmNumber) => {
   })
 }
 
-// 切换路况图层
-const toggleTraffic = () => {
-  if (trafficLayer.value) {
-    if (showTraffic.value) {
-      trafficLayer.value.show()
-    } else {
-      trafficLayer.value.hide()
-    }
-  }
-}
-
-// 切换卫星图层
-const toggleSatellite = () => {
-  if (satelliteLayer.value) {
-    if (showSatellite.value) {
+// 切换地图模式
+const changeMapMode = () => {
+  if (!map.value || !satelliteLayer.value || !roadNetLayer.value) return
+  
+  switch (mapMode.value) {
+    case 'satellite':
+      // 纯卫星模式（只显示卫星图，完全不显示任何文字标注）
+      map.value.setFeatures([])  // 隐藏所有矢量要素（包括文字、道路等）
       satelliteLayer.value.show()
-    } else {
+      roadNetLayer.value.hide()
+      break
+      
+    case 'satellite-road':
+      // 带文字的卫星模式（卫星图+文字标注，不显示路网）
+      map.value.setFeatures(['point'])  // 只显示POI标注点（地名文字），不显示道路
+      satelliteLayer.value.show()
+      roadNetLayer.value.hide()  // 不显示路网图层
+      break
+      
+    case 'normal':
+      // 2D标准地图模式（矢量地图）
+      map.value.setFeatures(['bg', 'road', 'building', 'point'])  // 显示所有要素
       satelliteLayer.value.hide()
-    }
+      roadNetLayer.value.hide()
+      map.value.setMapStyle('amap://styles/normal')
+      break
   }
 }
 
@@ -806,25 +896,60 @@ input[type="file"] {
   color: #374151;
 }
 
-.layer-controls {
+.map-mode-controls {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
-.checkbox-label {
+.radio-label {
   display: flex;
   align-items: center;
-  gap: 8px;
+  padding: 12px;
+  background: #f9fafb;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
   cursor: pointer;
-  font-size: 14px;
-  color: #374151;
+  transition: all 0.3s;
+  position: relative;
 }
 
-.checkbox-label input[type="checkbox"] {
-  width: 18px;
-  height: 18px;
+.radio-label:hover {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+}
+
+.radio-label.active {
+  background: #eff6ff;
+  border-color: #3887be;
+}
+
+.radio-label input[type="radio"] {
+  position: absolute;
+  opacity: 0;
   cursor: pointer;
+}
+
+.radio-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.radio-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.radio-text {
+  font-size: 14px;
+  color: #374151;
+  font-weight: 500;
+}
+
+.radio-label.active .radio-text {
+  color: #3887be;
 }
 
 .color-section {
@@ -1048,6 +1173,14 @@ input[type="file"] {
   font-size: 13px;
   color: #92400e;
   line-height: 1.5;
+}
+
+.tip-small {
+  margin: 0;
+  font-size: 12px;
+  color: #a16207;
+  line-height: 1.4;
+  padding-left: 8px;
 }
 
 /* 右侧预览面板 */
