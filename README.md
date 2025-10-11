@@ -1,5 +1,8 @@
-
 # 🏃 GPX Track Visualization Tool
+
+<img  height="150" alt="3ef0ea4b-9f0d-46fc-bb1f-9ea735ab6a9f (1)" src="https://github.com/user-attachments/assets/59ba05b0-5560-4bf9-b472-f475a46a24fe" />
+
+
 
 Convert your sports tracks (running, cycling, swimming, etc.) into beautiful 3:4 ratio sharing cards, easily export high-resolution transparent PNG images.
 
