@@ -195,6 +195,11 @@ import html2canvas from 'html2canvas'
 const AMAP_KEY = '1700798238bf5ff1d138946d98d1b108'
 const AMAP_SECURITY_CODE = 'b1e3976a8c2ebf69ccf86bd5f0bd34e3'
 
+// 检测是否在 Android 环境中
+const isAndroid = () => {
+  return typeof window !== 'undefined' && window.Android !== undefined
+}
+
 const mapContainer = ref(null)
 const fileInput = ref(null)
 const map = ref(null)
@@ -292,7 +297,13 @@ onMounted(async () => {
     loading.value = false
   } catch (error) {
     console.error('地图加载失败:', error)
-    alert('地图加载失败，请刷新页面重试')
+    const msg = '地图加载失败，请刷新页面重试'
+    if (isAndroid()) {
+      window.Android.showToast(msg)
+      window.Android.log('GPX-Viewer', '地图加载失败: ' + error.message)
+    } else {
+      alert(msg)
+    }
     loading.value = false
   }
 })
@@ -317,7 +328,13 @@ const handleFileUpload = async (event) => {
     parseGPX(text)
   } catch (error) {
     console.error('文件读取失败:', error)
-    alert('文件读取失败，请重试')
+    const msg = '文件读取失败，请重试'
+    if (isAndroid()) {
+      window.Android.showToast(msg)
+      window.Android.log('GPX-Viewer', '文件读取失败: ' + error.message)
+    } else {
+      alert(msg)
+    }
   } finally {
     loading.value = false
   }
@@ -719,12 +736,22 @@ const exportImage = async () => {
       hasData: !!gpxData.value,
       isExporting: exporting.value 
     })
-    alert('请先上传 GPX 文件')
+    const msg = '请先上传 GPX 文件'
+    if (isAndroid()) {
+      window.Android.showToast(msg)
+    } else {
+      alert(msg)
+    }
     return
   }
   
   if (!map.value) {
-    alert('地图还未加载完成，请稍后再试')
+    const msg = '地图还未加载完成，请稍后再试'
+    if (isAndroid()) {
+      window.Android.showToast(msg)
+    } else {
+      alert(msg)
+    }
     return
   }
   
@@ -734,8 +761,9 @@ const exportImage = async () => {
   
   try {
     console.log('开始导出图片...')
-    console.log('预览区域:', previewContent.value)
-    console.log('地图实例:', map.value)
+    if (isAndroid()) {
+      window.Android.log('GPX-Viewer', '开始导出图片...')
+    }
     
     // 等待地图完全渲染
     await new Promise(resolve => setTimeout(resolve, 1000))
@@ -782,22 +810,37 @@ const exportImage = async () => {
     
     console.log('截图完成，尺寸:', canvas.width, 'x', canvas.height)
     
-    // 下载图片
-    const link = document.createElement('a')
+    // 生成文件名
     const timestamp = new Date(gpxData.value.startTime).toISOString().replace(/[:.]/g, '-').split('T')[0]
     const fileName = `GPX-${timestamp}-${exportScale.value}x.png`
-    link.download = fileName
-    link.href = canvas.toDataURL('image/png', 0.95)
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
     
-    console.log('图片已下载:', fileName)
-    alert('图片导出成功！文件名：' + fileName)
+    // 获取 base64 数据
+    const dataUrl = canvas.toDataURL('image/png', 0.95)
+    
+    // 根据环境选择下载方式
+    if (isAndroid()) {
+      // Android 环境：使用 JSBridge 下载
+      window.Android.downloadBase64File(dataUrl, fileName)
+    } else {
+      // Web 环境：使用浏览器下载
+      const link = document.createElement('a')
+      link.download = fileName
+      link.href = dataUrl
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      alert('图片导出成功！文件名：' + fileName)
+    }
     
   } catch (error) {
     console.error('导出失败:', error)
-    alert('导出失败: ' + error.message + '\n请查看控制台了解详情')
+    const msg = '导出失败: ' + error.message
+    if (isAndroid()) {
+      window.Android.showToast(msg)
+      window.Android.log('GPX-Viewer', '导出失败: ' + error.message)
+    } else {
+      alert(msg + '\n请查看控制台了解详情')
+    }
   } finally {
     exporting.value = false
     loading.value = false
