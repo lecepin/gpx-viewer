@@ -812,7 +812,7 @@ const exportImage = async () => {
     
     // 生成文件名
     const timestamp = new Date(gpxData.value.startTime).toISOString().replace(/[:.]/g, '-').split('T')[0]
-    const fileName = `GPX-${timestamp}-${exportScale.value}x.png`
+    const fileName = `GPX-${timestamp}-${Date.now()}-${exportScale.value}x.png`
     
     // 获取 base64 数据
     const dataUrl = canvas.toDataURL('image/png', 0.95)
