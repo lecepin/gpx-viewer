@@ -104,3 +104,6 @@ Convert your sports tracks (running, cycling, swimming, etc.) into beautiful 3:4
 
 <img width="890" height="811" alt="image" src="https://github.com/user-attachments/assets/d53ebfeb-396b-4a74-80d0-c6a79c3b7365" />
 
+<img width="618" height="1323" alt="Screenshot_20251011_184641 (1)" src="https://github.com/user-attachments/assets/3bd3aeca-3ff9-469a-a07f-5e266a1a0e3e" />
+
+
